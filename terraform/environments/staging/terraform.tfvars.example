@@ -1,0 +1,46 @@
+# Staging Environment Configuration
+# Copy this file to terraform.tfvars and customize for your environment
+
+aws_region  = "us-east-1"
+environment = "staging"
+project_name = "myapp"
+
+###################
+# VPC Configuration
+###################
+vpc_cidr              = "10.1.0.0/16"  # Different CIDR from dev/prod
+az_count              = 2  # Staging: 2 AZs for cost optimization
+enable_nat_gateway    = true
+create_database_subnets = false  # Staging: Optional
+enable_flow_logs      = true
+enable_ecr_endpoints  = false  # Staging: Optional for cost
+
+###################
+# EKS Configuration
+###################
+cluster_version       = "1.28"
+endpoint_private_access = true
+endpoint_public_access  = true
+public_access_cidrs   = ["0.0.0.0/0"]
+log_retention_days     = 14  # Staging: 14 days
+enable_ssm            = true
+
+###################
+# Node Groups
+###################
+node_groups = {
+  general = {
+    desired_size   = 2  # Staging: 2 nodes minimum
+    max_size       = 5
+    min_size        = 2
+    instance_types = ["t3.large"]  # Staging: Medium instances
+    capacity_type  = "ON_DEMAND"
+    disk_size      = 50
+  }
+}
+
+###################
+# Add-ons Configuration
+###################
+alb_controller_replica_count = 2
+metrics_server_replica_count  = 2

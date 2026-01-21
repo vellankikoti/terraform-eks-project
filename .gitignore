@@ -1,0 +1,94 @@
+# Terraform files
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Terraform plan files
+*.tfplan
+
+# Lock files (commit these in production, ignore in learning)
+# .terraform.lock.hcl
+
+# Environment-specific files
+*.auto.tfvars
+
+# Sensitive files
+**/secrets.yaml
+**/secrets.yml
+**/*-secrets.yaml
+**/*-secrets.yml
+
+# Kubernetes config
+kubeconfig
+*.kubeconfig
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Backup files
+*.bak
+*.backup
+
+# Log files
+*.log
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+*.ppk
+
+# AWS credentials (NEVER commit these!)
+.aws/
+**/credentials
+**/config
+
+# Helm
+**/charts/*.tgz
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Python (if using Terratest or scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+ENV/
+
+# Node (if using CDK or related tools)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Keep example files
+!terraform/environments/dev/terraform.tfvars.example

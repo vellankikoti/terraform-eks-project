@@ -1,0 +1,55 @@
+# Production Environment Configuration
+# Copy this file to terraform.tfvars and customize for your environment
+
+aws_region  = "us-east-1"
+environment = "prod"
+project_name = "myapp"
+
+###################
+# VPC Configuration
+###################
+vpc_cidr              = "10.0.0.0/16"
+az_count              = 3  # Production: 3+ AZs for HA
+enable_nat_gateway    = true
+create_database_subnets = true
+enable_flow_logs      = true  # Production: Enable for security
+enable_ecr_endpoints  = true  # Production: Enable for performance
+
+###################
+# EKS Configuration
+###################
+cluster_version       = "1.28"
+endpoint_private_access = true
+endpoint_public_access  = true
+# TODO: Replace with actual office IPs
+public_access_cidrs   = ["1.2.3.4/32", "5.6.7.8/32"]
+log_retention_days     = 30  # Production: 30 days minimum
+enable_ssm            = true
+
+###################
+# Node Groups
+###################
+node_groups = {
+  general = {
+    desired_size   = 3  # Production: Minimum 3 for HA
+    max_size       = 10
+    min_size        = 3
+    instance_types = ["m5.large"]  # Production: Larger instances
+    capacity_type  = "ON_DEMAND"   # Production: On-demand for stability
+    disk_size      = 100
+  }
+}
+
+###################
+# Add-ons Configuration
+###################
+alb_controller_replica_count = 2  # Production: HA
+metrics_server_replica_count  = 2  # Production: HA
+
+###################
+# Optional Add-ons
+###################
+# Uncomment and configure if needed:
+# route53_zone_ids = ["Z1234567890ABC"]
+# domain_filters   = ["example.com"]
+# cert_manager_enable_route53 = true
