@@ -135,28 +135,40 @@ Get your IP:
 curl ifconfig.me
 ```
 
-### Step 2: Set Up Remote State (Optional but Recommended)
+### Step 2: Set Up Remote State (Recommended)
 
 **Why?** Protects your state file and enables team collaboration.
 
-**Create S3 bucket and DynamoDB table:**
+**Option A: Use the bootstrap module (recommended)**
 
 ```bash
-# Replace 'yourname' with your actual name
+cd terraform/bootstrap
+
+# Get your AWS account ID
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Deploy the remote state infrastructure
+terraform init
+terraform apply -var="aws_account_id=${AWS_ACCOUNT_ID}"
+
+# Note the output - it shows the backend configuration to use
+terraform output backend_config
+```
+
+**Option B: Manual setup**
+
+```bash
 export PROJECT_NAME="yourname"
 export AWS_REGION="us-east-1"
 
-# Create S3 bucket
 aws s3api create-bucket \
   --bucket ${PROJECT_NAME}-terraform-state \
   --region ${AWS_REGION}
 
-# Enable versioning
 aws s3api put-bucket-versioning \
   --bucket ${PROJECT_NAME}-terraform-state \
   --versioning-configuration Status=Enabled
 
-# Enable encryption
 aws s3api put-bucket-encryption \
   --bucket ${PROJECT_NAME}-terraform-state \
   --server-side-encryption-configuration '{
@@ -167,24 +179,23 @@ aws s3api put-bucket-encryption \
     }]
   }'
 
-# Create DynamoDB table for locking
 aws dynamodb create-table \
-  --table-name terraform-locks \
+  --table-name ${PROJECT_NAME}-terraform-locks \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
   --key-schema AttributeName=LockID,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
   --region ${AWS_REGION}
 ```
 
-**Edit `backend.tf`:**
+**Then edit `backend.tf` in your environment:**
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "yourname-terraform-state"  # Your bucket name
+    bucket         = "yourname-terraform-state-123456789012"
     key            = "dev/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    dynamodb_table = "yourname-terraform-locks"
     encrypt        = true
   }
 }
@@ -420,12 +431,13 @@ kubectl get nodes -w
 
 | Service | Cost | Can Optimize? |
 |---------|------|---------------|
-| EKS Control Plane | $73 | No |
-| EC2 (2x t3.medium) | ~$60 | Yes - use Spot |
-| NAT Gateway (2x) | ~$70 | Yes - use 1 instead |
+| EKS Control Plane | $75 | No |
+| EC2 (2x t3.medium ON_DEMAND) | ~$60 | Already optimized |
+| EC2 (spot nodes when active) | ~$10-30 | Already using SPOT |
+| NAT Gateway (2x) | ~$70 | Use 1 AZ to halve |
 | EBS Volumes | ~$10 | No |
 | Data Transfer | ~$5 | No |
-| **Total** | **~$218/month** | |
+| **Total** | **~$150-200/month** | Destroy when not in use! |
 
 ### Cost Optimization Tips
 

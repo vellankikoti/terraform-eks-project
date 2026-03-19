@@ -1,53 +1,88 @@
-# Splunk Add-on Scaffold
+# Splunk Integration Module
 
-This directory is a **scaffold** for integrating Splunk with your EKS cluster. Splunk integrations can be implemented via:
+Deploys the Splunk Distribution of OpenTelemetry Collector for log, metric, and trace forwarding to Splunk.
 
-- Splunk Connect for Kubernetes
-- OpenTelemetry Collector with Splunk exporter
-- Fluent Bit / Fluentd forwarding to Splunk HEC
+## Supported Backends
 
-Because production Splunk setups are highly specific (URLs, tokens, TLS, index configuration), this module intentionally does **not** impose a specific Helm chart or configuration.
+- **Splunk Platform** (Cloud/Enterprise) via HTTP Event Collector (HEC)
+- **Splunk Observability Cloud** (formerly SignalFx)
 
-Instead, it provides:
+## Architecture
 
-- A non-empty Terraform module
-- A place to add your own Splunk integration resources
+```
++--------+     +--------+     +--------+
+| Node 1 |     | Node 2 |     | Node 3 |
+| Agent  |     | Agent  |     | Agent  |  <-- DaemonSet collects logs/metrics
++---+----+     +---+----+     +---+----+
+    |              |              |
+    v              v              v
+  +-------------------------------+
+  |     Gateway (optional)        |  <-- Aggregation for traces
+  +-------------------------------+
+              |
+              v
+    +-------------------+
+    | Splunk Platform   |
+    | or Observability  |
+    +-------------------+
+```
 
-## How to Use
+## Usage
 
-1. Decide which integration pattern you want (Splunk Connect, OTel, Fluent Bit).
-2. Add the relevant Helm release or Kubernetes resources into `main.tf`.
-3. Expose configuration via `variables.tf` (HEC URL, token, etc.).
-4. Wire it into environments (dev/staging/prod) as needed.
-
-Example (pseudo-code):
+### Splunk Platform (HEC)
 
 ```hcl
-resource "helm_release" "splunk_connect" {
-  name       = "splunk-connect"
-  repository = "https://splunk.github.io/splunk-connect-for-kubernetes/"
-  chart      = "splunk-connect-for-kubernetes"
-  namespace  = "splunk"
-  version    = "X.Y.Z"
+module "splunk" {
+  source = "../../modules/addons/splunk"
 
-  set {
-    name  = "global.splunk.hec.host"
-    value = var.splunk_hec_host
-  }
+  enabled      = true
+  cluster_name = "my-cluster"
+  environment  = "prod"
 
-  # ...
+  splunk_platform_endpoint = "https://splunk.example.com:8088/services/collector"
+  splunk_hec_token         = var.splunk_hec_token  # Use secrets!
+  splunk_index             = "kubernetes"
+}
+```
+
+### Splunk Observability Cloud
+
+```hcl
+module "splunk" {
+  source = "../../modules/addons/splunk"
+
+  enabled      = true
+  cluster_name = "my-cluster"
+  environment  = "prod"
+
+  splunk_observability_access_token = var.splunk_access_token
+  splunk_observability_realm        = "us0"
 }
 ```
 
 ## Inputs
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| enabled | Enable Splunk scaffold | `bool` | `false` | no |
+| Name | Description | Type | Default |
+|------|-------------|------|---------|
+| enabled | Enable Splunk integration | bool | false |
+| cluster_name | EKS cluster name | string | "" |
+| environment | Environment name | string | "" |
+| splunk_platform_endpoint | Splunk HEC endpoint URL | string | "" |
+| splunk_hec_token | Splunk HEC token (sensitive) | string | "" |
+| splunk_index | Splunk index for logs | string | "main" |
+| splunk_observability_access_token | Splunk Observability Cloud token | string | "" |
+| splunk_observability_realm | Splunk Observability Cloud realm | string | "us0" |
+| enable_gateway | Enable gateway for trace aggregation | bool | false |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| enabled | Whether Splunk scaffold is enabled |
+| enabled | Whether Splunk integration is enabled |
+| namespace | Kubernetes namespace |
+| release_name | Helm release name |
 
+## Cost
+
+- No additional AWS costs (runs as DaemonSet pods)
+- Splunk licensing costs apply based on data volume ingested

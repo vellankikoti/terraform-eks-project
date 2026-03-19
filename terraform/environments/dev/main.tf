@@ -1,5 +1,12 @@
 # Development Environment
-# Complete EKS cluster with VPC and essential add-ons
+# Cost-optimized EKS cluster with VPC and essential add-ons
+# Uses smaller instances, spot nodes for non-critical workloads, minimal replicas
+#
+# Estimated monthly cost: ~$150-200 (destroy when not in use!)
+# - EKS control plane: $75
+# - 2x t3.medium ON_DEMAND: ~$60
+# - 1x NAT Gateway: ~$35
+# - CloudWatch logs, EBS: ~$10
 
 terraform {
   required_version = ">= 1.6.0"
@@ -78,12 +85,13 @@ module "vpc" {
   cluster_name = local.cluster_name
   aws_region   = var.aws_region
 
+  # Dev: Cost-optimized - single NAT GW would save more but we keep per-AZ for learning
   enable_nat_gateway       = var.enable_nat_gateway
   create_database_subnets  = var.create_database_subnets
   enable_flow_logs         = var.enable_flow_logs
-  enable_s3_endpoint       = var.enable_s3_endpoint
-  enable_dynamodb_endpoint = var.enable_dynamodb_endpoint
-  enable_ecr_endpoints     = var.enable_ecr_endpoints
+  enable_s3_endpoint       = var.enable_s3_endpoint       # Free - always enable
+  enable_dynamodb_endpoint = var.enable_dynamodb_endpoint  # Free - always enable
+  enable_ecr_endpoints     = var.enable_ecr_endpoints      # Dev: disabled to save ~$14/month
 
   tags = local.tags
 }
@@ -98,9 +106,9 @@ module "eks" {
   cluster_name    = local.cluster_name
   cluster_version = var.cluster_version
 
-  vpc_id              = module.vpc.vpc_id
-  private_subnet_ids  = module.vpc.private_subnet_ids
-  public_subnet_ids   = module.vpc.public_subnet_ids
+  vpc_id             = module.vpc.vpc_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  public_subnet_ids  = module.vpc.public_subnet_ids
 
   endpoint_private_access = var.endpoint_private_access
   endpoint_public_access  = var.endpoint_public_access
@@ -117,38 +125,38 @@ module "eks" {
 }
 
 ###################
-# Add-ons
+# Core Add-ons (Required for cluster functionality)
 ###################
 
-# AWS Load Balancer Controller
+# AWS Load Balancer Controller - Required for Ingress
 module "aws_load_balancer_controller" {
   source = "../../modules/addons/aws-load-balancer-controller"
 
-  cluster_name       = module.eks.cluster_id
-  vpc_id             = module.vpc.vpc_id
-  aws_region         = var.aws_region
-  oidc_provider_arn  = module.eks.oidc_provider_arn
-  oidc_provider_url  = module.eks.oidc_provider_url
+  cluster_name      = module.eks.cluster_id
+  vpc_id            = module.vpc.vpc_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
 
-  replica_count = var.alb_controller_replica_count
+  replica_count = 1  # Dev: single replica to save resources
 
   tags = local.tags
 
   depends_on = [module.eks]
 }
 
-# Cluster Autoscaler
+# Cluster Autoscaler - Required for node scaling
 module "cluster_autoscaler" {
   source = "../../modules/addons/cluster-autoscaler"
 
-  cluster_name       = module.eks.cluster_id
-  aws_region         = var.aws_region
-  oidc_provider_arn  = module.eks.oidc_provider_arn
-  oidc_provider_url  = module.eks.oidc_provider_url
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
 
-  scale_down_enabled              = var.autoscaler_scale_down_enabled
-  scale_down_delay_after_add      = var.autoscaler_scale_down_delay_after_add
-  scale_down_unneeded_time        = var.autoscaler_scale_down_unneeded_time
+  scale_down_enabled               = var.autoscaler_scale_down_enabled
+  scale_down_delay_after_add       = "5m"  # Dev: faster scale down for testing
+  scale_down_unneeded_time         = "5m"  # Dev: faster cleanup
   scale_down_utilization_threshold = var.autoscaler_scale_down_utilization_threshold
 
   tags = local.tags
@@ -156,27 +164,60 @@ module "cluster_autoscaler" {
   depends_on = [module.eks]
 }
 
-# EBS CSI Driver
+# EBS CSI Driver - Required for persistent volumes
 module "ebs_csi_driver" {
   source = "../../modules/addons/ebs-csi-driver"
 
-  cluster_name       = module.eks.cluster_id
-  aws_region         = var.aws_region
-  oidc_provider_arn  = module.eks.oidc_provider_arn
-  oidc_provider_url  = module.eks.oidc_provider_url
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
 
   tags = local.tags
 
   depends_on = [module.eks]
 }
 
-# Metrics Server
+# Metrics Server - Required for HPA
 module "metrics_server" {
   source = "../../modules/addons/metrics-server"
 
-  cluster_name = module.eks.cluster_id
+  cluster_name  = module.eks.cluster_id
+  replica_count = 1  # Dev: single replica
 
-  replica_count = 1  # Single replica for dev (cost optimization)
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+###################
+# Observability Add-ons
+###################
+
+# Prometheus - Metrics collection (kube-prometheus-stack)
+module "prometheus" {
+  source = "../../modules/addons/prometheus"
+
+  namespace                = "monitoring"
+  prometheus_replica_count = 1  # Dev: single replica
+  enable_builtin_grafana   = true  # Dev: use built-in Grafana for simplicity
+
+  # Dev: reduced resources
+  prometheus_resources_requests_cpu    = "250m"
+  prometheus_resources_requests_memory = "512Mi"
+  prometheus_resources_limits_cpu      = "500m"
+  prometheus_resources_limits_memory   = "1Gi"
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# Reloader - Auto-restart pods on ConfigMap/Secret changes
+module "reloader" {
+  source = "../../modules/addons/reloader"
+
+  namespace = "reloader"
 
   tags = local.tags
 

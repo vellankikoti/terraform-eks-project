@@ -21,56 +21,20 @@ variable "project_name" {
 ###################
 
 variable "vpc_cidr" {
-  description = "CIDR block for VPC"
+  description = "CIDR block for VPC (prod uses 10.0.0.0/16 - primary range)"
   type        = string
   default     = "10.0.0.0/16"
 }
 
 variable "az_count" {
-  description = "Number of availability zones (production: use 3+ for HA)"
+  description = "Number of availability zones (production: 3 minimum for HA)"
   type        = number
   default     = 3
 
   validation {
-    condition     = var.az_count >= 2 && var.az_count <= 6
-    error_message = "AZ count must be between 2 and 6."
+    condition     = var.az_count >= 3 && var.az_count <= 6
+    error_message = "Production must use at least 3 AZs for high availability."
   }
-}
-
-variable "enable_nat_gateway" {
-  description = "Enable NAT Gateway (production: true for HA)"
-  type        = bool
-  default     = true
-}
-
-variable "create_database_subnets" {
-  description = "Create database subnets"
-  type        = bool
-  default     = true  # Production: Enable for RDS/ElastiCache isolation
-}
-
-variable "enable_flow_logs" {
-  description = "Enable VPC Flow Logs (production: true for security monitoring)"
-  type        = bool
-  default     = true
-}
-
-variable "enable_s3_endpoint" {
-  description = "Enable S3 VPC endpoint"
-  type        = bool
-  default     = true
-}
-
-variable "enable_dynamodb_endpoint" {
-  description = "Enable DynamoDB VPC endpoint"
-  type        = bool
-  default     = true
-}
-
-variable "enable_ecr_endpoints" {
-  description = "Enable ECR VPC endpoints (production: true for better performance)"
-  type        = bool
-  default     = true
 }
 
 ###################
@@ -80,47 +44,29 @@ variable "enable_ecr_endpoints" {
 variable "cluster_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.28"
-}
-
-variable "endpoint_private_access" {
-  description = "Enable private API endpoint (production: true)"
-  type        = bool
-  default     = true
+  default     = "1.31"
 }
 
 variable "endpoint_public_access" {
-  description = "Enable public API endpoint (production: restrict with CIDRs)"
+  description = "Enable public API endpoint (production: restrict with CIDRs or disable)"
   type        = bool
   default     = true
 }
 
 variable "public_access_cidrs" {
-  description = "CIDR blocks allowed to access public API endpoint (production: restrict to office IPs)"
+  description = "CIDR blocks allowed to access public API endpoint (production: restrict to VPN/office IPs)"
   type        = list(string)
-  default     = ["0.0.0.0/0"]  # TODO: Replace with actual office IPs
-}
-
-variable "enabled_cluster_log_types" {
-  description = "Control plane logging types (production: enable all)"
-  type        = list(string)
-  default     = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+  default     = ["0.0.0.0/0"]  # IMPORTANT: Replace with actual office/VPN IPs before production use
 }
 
 variable "log_retention_days" {
-  description = "CloudWatch log retention days (production: longer retention)"
+  description = "CloudWatch log retention days (production: 30+ for compliance)"
   type        = number
-  default     = 30  # Production: 30 days minimum
-}
-
-variable "enable_ssm" {
-  description = "Enable SSM for node management (production: true for debugging)"
-  type        = bool
-  default     = true
+  default     = 30
 }
 
 variable "node_groups" {
-  description = "EKS node group configurations (production: larger instances, more nodes)"
+  description = "EKS node group configurations"
   type = map(object({
     desired_size    = number
     max_size        = number
@@ -139,14 +85,63 @@ variable "node_groups" {
     bootstrap_arguments = optional(string)
   }))
 
+  # Production: Enterprise-grade node group strategy
+  #
+  # WHY this layout:
+  # 1. "system" nodes (ON_DEMAND): Run critical infra (CoreDNS, kube-proxy, monitoring)
+  #    - ON_DEMAND because system pods can't tolerate interruption
+  #    - m5.large: 2 vCPU, 8 GiB RAM - good balance for system workloads
+  #    - min_size=3 ensures one per AZ (survives AZ failure)
+  #
+  # 2. "general" nodes (ON_DEMAND): Run stateful or critical app workloads
+  #    - For services that can't handle spot interruptions (databases, queues)
+  #    - Scales based on demand
+  #
+  # 3. "spot" nodes (SPOT): Run stateless, interruptible workloads
+  #    - 60-70% cheaper than on-demand
+  #    - Multiple instance families for availability (t3, t3a, m5, m5a, m6i)
+  #    - Applications must handle graceful termination (2-min warning)
+  #    - PodDisruptionBudgets protect against mass eviction
   default = {
-    general = {
-      desired_size   = 3  # Production: Minimum 3 for HA
-      max_size       = 10
-      min_size        = 3
-      instance_types = ["m5.large"]  # Production: Larger instances
-      capacity_type  = "ON_DEMAND"   # Production: On-demand for stability
+    system = {
+      desired_size   = 3
+      max_size       = 4
+      min_size       = 3
+      instance_types = ["m5.large"]
+      capacity_type  = "ON_DEMAND"
       disk_size      = 100
+      labels = {
+        "workload-type" = "system"
+        "node-role"     = "system"
+      }
+      taints = [{
+        key    = "CriticalAddonsOnly"
+        value  = "true"
+        effect = "PREFER_NO_SCHEDULE"
+      }]
+    }
+    general = {
+      desired_size   = 2
+      max_size       = 10
+      min_size       = 2
+      instance_types = ["m5.large", "m5a.large"]
+      capacity_type  = "ON_DEMAND"
+      disk_size      = 100
+      labels = {
+        "workload-type" = "general"
+      }
+    }
+    spot = {
+      desired_size   = 2
+      max_size       = 20
+      min_size       = 0
+      instance_types = ["t3.large", "t3a.large", "m5.large", "m5a.large", "m6i.large", "m6a.large"]
+      capacity_type  = "SPOT"
+      disk_size      = 50
+      labels = {
+        "workload-type" = "spot"
+        "lifecycle"     = "spot"
+      }
     }
   }
 }
@@ -155,54 +150,31 @@ variable "node_groups" {
 # Add-on Variables
 ###################
 
-variable "alb_controller_replica_count" {
-  description = "Number of AWS Load Balancer Controller replicas (production: 2+ for HA)"
-  type        = number
-  default     = 2
+variable "grafana_admin_password" {
+  description = "Grafana admin password (use secrets manager in real production)"
+  type        = string
+  default     = "changeme-use-external-secrets"
+  sensitive   = true
 }
 
-variable "metrics_server_replica_count" {
-  description = "Number of Metrics Server replicas (production: 2+ for HA)"
-  type        = number
-  default     = 2
-}
-
-variable "autoscaler_scale_down_enabled" {
-  description = "Enable cluster autoscaler scale down"
+variable "argocd_enable_irsa" {
+  description = "Enable IRSA for ArgoCD (needed if ArgoCD manages AWS resources)"
   type        = bool
-  default     = true
-}
-
-variable "autoscaler_scale_down_delay_after_add" {
-  description = "Scale down delay after scale up"
-  type        = string
-  default     = "10m"
-}
-
-variable "autoscaler_scale_down_unneeded_time" {
-  description = "Time before unneeded node is scaled down"
-  type        = string
-  default     = "10m"
-}
-
-variable "autoscaler_scale_down_utilization_threshold" {
-  description = "Node utilization threshold for scale down"
-  type        = string
-  default     = "0.5"
+  default     = false
 }
 
 ###################
-# Optional Add-ons Variables
+# DNS & TLS Variables
 ###################
 
 variable "route53_zone_ids" {
-  description = "Route53 hosted zone IDs (for External DNS and Cert-Manager)"
+  description = "Route53 hosted zone IDs for External DNS and Cert-Manager"
   type        = list(string)
-  default     = []
+  default     = []  # Provide your zone IDs to enable DNS automation
 }
 
 variable "domain_filters" {
-  description = "Domain filters for External DNS"
+  description = "Domain filters for External DNS (e.g., ['example.com'])"
   type        = list(string)
   default     = []
 }
@@ -210,5 +182,5 @@ variable "domain_filters" {
 variable "cert_manager_enable_route53" {
   description = "Enable Route53 for Cert-Manager DNS01 challenge"
   type        = bool
-  default     = false
+  default     = false  # Enable when Route53 zone IDs are provided
 }

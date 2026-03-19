@@ -1,6 +1,13 @@
 # Staging Environment
-# Intermediate configuration between dev and prod
-# Features: 2 NAT Gateways, medium instances, most logging enabled
+# Mirror of production with reduced capacity for pre-release testing
+# Features: Full addon stack, spot nodes for workloads, observability enabled
+#
+# Estimated monthly cost: ~$300-400
+# - EKS control plane: $75
+# - 2x t3.large ON_DEMAND: ~$120
+# - Spot nodes: ~$30-60
+# - 2x NAT Gateway: ~$70
+# - Monitoring, logging, storage: ~$30
 
 terraform {
   required_version = ">= 1.6.0"
@@ -79,7 +86,6 @@ module "vpc" {
   cluster_name = local.cluster_name
   aws_region   = var.aws_region
 
-  # Staging: 2 NAT Gateways (balance between cost and HA)
   enable_nat_gateway       = var.enable_nat_gateway
   create_database_subnets  = var.create_database_subnets
   enable_flow_logs         = var.enable_flow_logs
@@ -119,20 +125,20 @@ module "eks" {
 }
 
 ###################
-# Add-ons
+# Core Add-ons
 ###################
 
 # AWS Load Balancer Controller
 module "aws_load_balancer_controller" {
   source = "../../modules/addons/aws-load-balancer-controller"
 
-  cluster_name       = module.eks.cluster_id
-  vpc_id             = module.vpc.vpc_id
-  aws_region         = var.aws_region
-  oidc_provider_arn  = module.eks.oidc_provider_arn
-  oidc_provider_url  = module.eks.oidc_provider_url
+  cluster_name      = module.eks.cluster_id
+  vpc_id            = module.vpc.vpc_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
 
-  replica_count = var.alb_controller_replica_count
+  replica_count = 2
 
   tags = local.tags
 
@@ -143,14 +149,14 @@ module "aws_load_balancer_controller" {
 module "cluster_autoscaler" {
   source = "../../modules/addons/cluster-autoscaler"
 
-  cluster_name       = module.eks.cluster_id
-  aws_region         = var.aws_region
-  oidc_provider_arn  = module.eks.oidc_provider_arn
-  oidc_provider_url  = module.eks.oidc_provider_url
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
 
-  scale_down_enabled              = var.autoscaler_scale_down_enabled
-  scale_down_delay_after_add      = var.autoscaler_scale_down_delay_after_add
-  scale_down_unneeded_time        = var.autoscaler_scale_down_unneeded_time
+  scale_down_enabled               = var.autoscaler_scale_down_enabled
+  scale_down_delay_after_add       = var.autoscaler_scale_down_delay_after_add
+  scale_down_unneeded_time         = var.autoscaler_scale_down_unneeded_time
   scale_down_utilization_threshold = var.autoscaler_scale_down_utilization_threshold
 
   tags = local.tags
@@ -162,10 +168,24 @@ module "cluster_autoscaler" {
 module "ebs_csi_driver" {
   source = "../../modules/addons/ebs-csi-driver"
 
-  cluster_name       = module.eks.cluster_id
-  aws_region         = var.aws_region
-  oidc_provider_arn  = module.eks.oidc_provider_arn
-  oidc_provider_url  = module.eks.oidc_provider_url
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# EFS CSI Driver - Staging tests shared storage scenarios
+module "efs_csi_driver" {
+  source = "../../modules/addons/efs-csi-driver"
+
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
 
   tags = local.tags
 
@@ -176,9 +196,75 @@ module "ebs_csi_driver" {
 module "metrics_server" {
   source = "../../modules/addons/metrics-server"
 
-  cluster_name = module.eks.cluster_id
+  cluster_name  = module.eks.cluster_id
+  replica_count = 2
 
-  replica_count = var.metrics_server_replica_count
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+###################
+# Observability Add-ons
+###################
+
+# Prometheus + Grafana Stack
+module "prometheus" {
+  source = "../../modules/addons/prometheus"
+
+  namespace                = "monitoring"
+  prometheus_replica_count = 1
+  enable_builtin_grafana   = true
+
+  prometheus_resources_requests_cpu    = "500m"
+  prometheus_resources_requests_memory = "1Gi"
+  prometheus_resources_limits_cpu      = "1000m"
+  prometheus_resources_limits_memory   = "2Gi"
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# OpenTelemetry Collector - Traces and metrics pipeline
+module "otel_collector" {
+  source = "../../modules/addons/otel-collector"
+
+  namespace     = "observability"
+  mode          = "deployment"
+  replica_count = 1
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+###################
+# Operations Add-ons
+###################
+
+# Reloader - Auto-restart on ConfigMap/Secret changes
+module "reloader" {
+  source = "../../modules/addons/reloader"
+
+  namespace = "reloader"
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# Cert-Manager - TLS certificate automation
+module "cert_manager" {
+  source = "../../modules/addons/cert-manager"
+
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+
+  enable_route53   = var.cert_manager_enable_route53
+  route53_zone_ids = var.route53_zone_ids
 
   tags = local.tags
 

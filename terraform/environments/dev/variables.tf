@@ -21,13 +21,13 @@ variable "project_name" {
 ###################
 
 variable "vpc_cidr" {
-  description = "CIDR block for VPC"
+  description = "CIDR block for VPC (dev uses 10.10.0.0/16 to avoid overlap with prod)"
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "10.10.0.0/16"  # Unique per environment to allow VPC peering
 }
 
 variable "az_count" {
-  description = "Number of availability zones"
+  description = "Number of availability zones (dev: 2 for cost savings)"
   type        = number
   default     = 2
 }
@@ -41,29 +41,29 @@ variable "enable_nat_gateway" {
 variable "create_database_subnets" {
   description = "Create database subnets"
   type        = bool
-  default     = false
+  default     = false  # Dev: not needed unless testing RDS
 }
 
 variable "enable_flow_logs" {
   description = "Enable VPC Flow Logs"
   type        = bool
-  default     = false
+  default     = false  # Dev: disabled to save cost
 }
 
 variable "enable_s3_endpoint" {
-  description = "Enable S3 VPC endpoint"
+  description = "Enable S3 VPC endpoint (free - always enable)"
   type        = bool
   default     = true
 }
 
 variable "enable_dynamodb_endpoint" {
-  description = "Enable DynamoDB VPC endpoint"
+  description = "Enable DynamoDB VPC endpoint (free - always enable)"
   type        = bool
   default     = true
 }
 
 variable "enable_ecr_endpoints" {
-  description = "Enable ECR VPC endpoints"
+  description = "Enable ECR VPC endpoints (~$14/month - dev: disabled)"
   type        = bool
   default     = false
 }
@@ -75,7 +75,7 @@ variable "enable_ecr_endpoints" {
 variable "cluster_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.28"
+  default     = "1.31"
 }
 
 variable "endpoint_private_access" {
@@ -93,25 +93,25 @@ variable "endpoint_public_access" {
 variable "public_access_cidrs" {
   description = "CIDR blocks allowed to access public API endpoint"
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["0.0.0.0/0"]  # Dev: open for convenience
 }
 
 variable "enabled_cluster_log_types" {
   description = "Control plane logging types"
   type        = list(string)
-  default     = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+  default     = ["api", "audit", "authenticator"]  # Dev: reduced logging
 }
 
 variable "log_retention_days" {
   description = "CloudWatch log retention days"
   type        = number
-  default     = 7
+  default     = 3  # Dev: short retention to save cost
 }
 
 variable "enable_ssm" {
   description = "Enable SSM for node management"
   type        = bool
-  default     = false
+  default     = true  # Dev: helpful for debugging
 }
 
 variable "node_groups" {
@@ -134,14 +134,32 @@ variable "node_groups" {
     bootstrap_arguments = optional(string)
   }))
 
+  # Dev: Cost-effective setup
+  # - System nodes: t3.medium ON_DEMAND (cheap, burstable, reliable)
+  # - Workload nodes: t3.medium SPOT (60-70% cheaper than on-demand)
   default = {
-    general = {
+    system = {
       desired_size   = 2
-      max_size       = 5
+      max_size       = 3
       min_size       = 1
       instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
-      disk_size      = 50
+      disk_size      = 30
+      labels = {
+        "workload-type" = "system"
+      }
+    }
+    spot = {
+      desired_size   = 1
+      max_size       = 5
+      min_size       = 0
+      instance_types = ["t3.medium", "t3a.medium", "t3.large", "t3a.large"]  # Diversify for spot availability
+      capacity_type  = "SPOT"
+      disk_size      = 30
+      labels = {
+        "workload-type" = "spot"
+        "lifecycle"     = "spot"
+      }
     }
   }
 }
@@ -150,28 +168,10 @@ variable "node_groups" {
 # Add-on Variables
 ###################
 
-variable "alb_controller_replica_count" {
-  description = "Number of AWS Load Balancer Controller replicas"
-  type        = number
-  default     = 2
-}
-
 variable "autoscaler_scale_down_enabled" {
   description = "Enable cluster autoscaler scale down"
   type        = bool
   default     = true
-}
-
-variable "autoscaler_scale_down_delay_after_add" {
-  description = "Scale down delay after scale up"
-  type        = string
-  default     = "10m"
-}
-
-variable "autoscaler_scale_down_unneeded_time" {
-  description = "Time before unneeded node is scaled down"
-  type        = string
-  default     = "10m"
 }
 
 variable "autoscaler_scale_down_utilization_threshold" {

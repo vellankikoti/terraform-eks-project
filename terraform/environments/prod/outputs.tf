@@ -1,6 +1,15 @@
+###################
+# VPC Outputs
+###################
+
 output "vpc_id" {
   description = "VPC ID"
   value       = module.vpc.vpc_id
+}
+
+output "vpc_cidr" {
+  description = "VPC CIDR block"
+  value       = module.vpc.vpc_cidr
 }
 
 output "private_subnet_ids" {
@@ -13,9 +22,23 @@ output "public_subnet_ids" {
   value       = module.vpc.public_subnet_ids
 }
 
+output "database_subnet_ids" {
+  description = "Database subnet IDs"
+  value       = module.vpc.database_subnet_ids
+}
+
+###################
+# EKS Outputs
+###################
+
 output "cluster_id" {
   description = "EKS cluster ID"
   value       = module.eks.cluster_id
+}
+
+output "cluster_arn" {
+  description = "EKS cluster ARN"
+  value       = module.eks.cluster_arn
 }
 
 output "cluster_endpoint" {
@@ -43,10 +66,19 @@ output "oidc_provider_arn" {
   value       = module.eks.oidc_provider_arn
 }
 
+output "node_groups" {
+  description = "EKS node group details"
+  value       = module.eks.node_groups
+}
+
 output "kubeconfig_command" {
   description = "Command to update kubeconfig"
   value       = module.eks.kubeconfig_command
 }
+
+###################
+# Add-on Outputs
+###################
 
 output "alb_controller_role_arn" {
   description = "AWS Load Balancer Controller IAM role ARN"
@@ -61,4 +93,9 @@ output "cluster_autoscaler_role_arn" {
 output "ebs_csi_driver_role_arn" {
   description = "EBS CSI Driver IAM role ARN"
   value       = module.ebs_csi_driver.iam_role_arn
+}
+
+output "efs_csi_driver_role_arn" {
+  description = "EFS CSI Driver IAM role ARN"
+  value       = module.efs_csi_driver.iam_role_arn
 }

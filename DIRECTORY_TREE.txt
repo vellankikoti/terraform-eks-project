@@ -1,94 +1,140 @@
-terraform-project/
+terraform-eks-project/
 │
 ├── README.md                          # Main overview & learning path
 ├── GETTING_STARTED.md                 # Step-by-step deployment guide
-├── PROJECT_SUMMARY.md                 # Complete project summary
 ├── INDEX.md                           # File index and navigation
+├── PRD.md                             # Product requirements document
+├── Makefile                           # Common operations (plan, apply, destroy)
+├── .pre-commit-config.yaml            # Pre-commit hooks
 ├── .gitignore                         # Git ignore rules
 │
-├── docs/                              # Learning documentation
-│   ├── 01-fundamentals.md            # Terraform core concepts (DEEP)
-│   ├── 02-internals.md               # How Terraform works (DEEP)
-│   └── 04-eks-production.md          # EKS architecture (VERY DEEP)
+├── docs/                              # Learning documentation (10 files)
+│   ├── 01-fundamentals.md            # Terraform core concepts
+│   ├── 02-internals.md               # How Terraform works under the hood
+│   ├── 03-project-structure.md       # Repository layouts, module patterns
+│   ├── 04-eks-production.md          # EKS architecture & implementation
+│   ├── 05-helm-kubernetes.md         # Terraform + Helm + K8s integration
+│   ├── 06-security-scaling.md        # Security, scaling, cost optimization
+│   ├── 07-testing.md                 # Testing, CI/CD, safe rollouts
+│   ├── 08-debugging-war-stories.md   # Real production failures & fixes
+│   ├── 09-visual-explanations.md     # ASCII diagrams, mental models
+│   └── 10-interview-questions.md     # Interview prep (junior to staff)
+│
+├── .github/
+│   └── workflows/
+│       └── terraform.yml              # CI/CD pipeline
+│
+├── scripts/
+│   ├── setup.sh                       # Install all required tools
+│   ├── validate-all.sh                # Lint and validate all environments
+│   └── cost-estimate.sh               # Infracost estimation
 │
 └── terraform/                         # Terraform code
     │
+    ├── bootstrap/                     # Remote state backend (run FIRST)
+    │   ├── main.tf                   # S3 bucket + DynamoDB table
+    │   ├── variables.tf
+    │   ├── outputs.tf
+    │   └── README.md
+    │
     ├── modules/                       # Reusable modules
     │   │
-    │   ├── vpc/                       # VPC module
-    │   │   ├── main.tf               # Multi-AZ VPC with subnets, NAT, endpoints
-    │   │   ├── variables.tf          # Configurable parameters
-    │   │   ├── outputs.tf            # Outputs (VPC ID, subnet IDs, etc.)
-    │   │   └── README.md             # Module documentation
+    │   ├── vpc/                       # Multi-AZ VPC
+    │   │   ├── main.tf               # VPC, subnets, NAT, endpoints, flow logs
+    │   │   ├── variables.tf          # 14 configurable parameters
+    │   │   ├── outputs.tf
+    │   │   └── README.md
     │   │
-    │   ├── eks/                       # EKS cluster module
-    │   │   ├── main.tf               # EKS cluster, nodes, security, IRSA
-    │   │   ├── variables.tf          # Cluster configuration
-    │   │   ├── outputs.tf            # Cluster details
-    │   │   └── user_data.sh.tpl      # Node bootstrap script
+    │   ├── eks/                       # EKS Cluster
+    │   │   ├── main.tf               # Cluster, nodes, security, IRSA, KMS
+    │   │   ├── variables.tf
+    │   │   ├── outputs.tf
+    │   │   └── user_data.sh.tpl
     │   │
-    │   └── addons/                    # Kubernetes add-ons
+    │   ├── iam/                       # IAM & RBAC
+    │   │   ├── main.tf               # Admin/developer/CI-CD roles, aws-auth
+    │   │   ├── variables.tf
+    │   │   ├── outputs.tf
+    │   │   └── README.md
+    │   │
+    │   └── addons/                    # Kubernetes Add-ons (18 modules)
     │       │
-    │       ├── aws-load-balancer-controller/
-    │       │   ├── main.tf           # ALB/NLB controller with IRSA
-    │       │   ├── variables.tf      # Controller configuration
-    │       │   ├── outputs.tf        # IAM role outputs
-    │       │   └── iam_policy.json   # AWS IAM policy
-    │       │
-    │       ├── cluster-autoscaler/
-    │       │   ├── main.tf           # Auto-scaling with IRSA
-    │       │   ├── variables.tf      # Scaling configuration
-    │       │   └── outputs.tf        # IAM role outputs
-    │       │
-    │       ├── ebs-csi-driver/        # (Future)
-    │       ├── efs-csi-driver/        # (Future)
-    │       ├── external-dns/          # (Future)
-    │       ├── cert-manager/          # (Future)
-    │       ├── argocd/                # (Future)
-    │       ├── prometheus/            # (Future)
-    │       ├── grafana/               # (Future)
-    │       ├── otel-collector/        # (Future)
-    │       ├── splunk/                # (Future)
-    │       ├── reloader/              # (Future)
-    │       └── metrics-server/        # (Future)
+    │       ├── aws-load-balancer-controller/   # ALB/NLB Ingress
+    │       ├── cluster-autoscaler/             # Node auto-scaling
+    │       ├── karpenter/                      # Next-gen autoscaler (spot-aware)
+    │       ├── ebs-csi-driver/                 # Block storage (EBS)
+    │       ├── efs-csi-driver/                 # Shared storage (EFS)
+    │       ├── metrics-server/                 # HPA/VPA metrics
+    │       ├── vpa/                            # Vertical Pod Autoscaler
+    │       ├── external-dns/                   # Route53 DNS automation
+    │       ├── cert-manager/                   # TLS certificate automation
+    │       ├── prometheus/                     # Metrics & alerting
+    │       ├── grafana/                        # Dashboards & visualization
+    │       ├── otel-collector/                 # Distributed tracing
+    │       ├── fluent-bit/                     # Log aggregation
+    │       ├── external-secrets/               # AWS Secrets Manager integration
+    │       ├── splunk/                         # Enterprise log forwarding
+    │       ├── argocd/                         # GitOps continuous delivery
+    │       ├── reloader/                       # ConfigMap/Secret reload
+    │       └── metrics-server/                 # HPA/VPA metrics
     │
     ├── environments/                  # Environment-specific configs
     │   │
-    │   ├── dev/                       # Development environment
-    │   │   ├── main.tf               # Complete stack (VPC + EKS + Add-ons)
-    │   │   ├── variables.tf          # All parameters
-    │   │   ├── outputs.tf            # Important values
-    │   │   ├── backend.tf            # Remote state config
-    │   │   ├── terraform.tfvars      # Development values
-    │   │   └── README.md             # Deployment guide
+    │   ├── dev/                       # Development (~$150-200/month)
+    │   │   ├── main.tf               # VPC + EKS + core addons + Prometheus
+    │   │   ├── variables.tf          # t3.medium, 2 AZs, spot nodes
+    │   │   ├── outputs.tf
+    │   │   ├── backend.tf
+    │   │   └── terraform.tfvars.example
     │   │
-    │   ├── staging/                   # (Future) Staging environment
-    │   └── prod/                      # (Future) Production environment
+    │   ├── staging/                   # Staging (~$300-400/month)
+    │   │   ├── main.tf               # Full stack + OTel + Cert-Manager
+    │   │   ├── variables.tf          # t3.large, 2 AZs, spot nodes
+    │   │   ├── outputs.tf
+    │   │   ├── backend.tf
+    │   │   └── terraform.tfvars.example
+    │   │
+    │   └── prod/                      # Production (~$500-800/month)
+    │       ├── main.tf               # Everything + ArgoCD + Grafana + DNS
+    │       ├── variables.tf          # m5.large, 3 AZs, ON_DEMAND + spot
+    │       ├── outputs.tf
+    │       ├── backend.tf
+    │       └── terraform.tfvars.example
     │
-    └── examples/                      # (Future) Standalone examples
+    └── examples/                      # Working examples
+        ├── simple-app-deployment/     # Nginx + Ingress + HPA
+        ├── spot-instances/            # Cost-saving spot patterns
+        └── multi-team-rbac/           # Namespace isolation + RBAC
 
 
 QUICK STATS:
 -------------
-Total Files Created: 26
-Lines of Code: ~7,700
-Terraform Modules: 3 (VPC, EKS, 2 Add-ons)
-Documentation Files: 8
-Estimated Monthly Cost (Dev): $218
+Total Terraform Modules: 21 (VPC, EKS, IAM, 18 add-ons)
+Total Documentation: 10 deep-dive guides + supporting docs
+Total Environments: 3 (dev, staging, prod)
+Total Examples: 3 practical scenarios
+CI/CD: GitHub Actions with lint, security scan, plan, apply
+Estimated Cost (Dev): $150-200/month
 Deployment Time: 15-20 minutes
-Resources Created: ~60-80
 
 
 WHAT THIS GIVES YOU:
 --------------------
-✅ Production-grade VPC (multi-AZ, NAT, endpoints)
-✅ Secure EKS cluster (IRSA, encryption, logging)
-✅ Auto-scaling (Cluster Autoscaler)
-✅ Load balancing (AWS Load Balancer Controller)
-✅ Complete documentation (beginner → expert)
-✅ Real Terraform code (not toy examples)
-✅ Cost optimization strategies
-✅ Interview-level knowledge
+- Production-grade VPC (multi-AZ, NAT, VPC endpoints, flow logs)
+- Secure EKS cluster (IRSA, KMS encryption, IMDSv2, audit logging)
+- Auto-scaling (Cluster Autoscaler + Karpenter + HPA + VPA)
+- Load balancing (AWS Load Balancer Controller)
+- Storage (EBS CSI + EFS CSI drivers)
+- Observability (Prometheus + Grafana + OpenTelemetry + Fluent Bit)
+- DNS & TLS (External DNS + Cert-Manager)
+- GitOps (ArgoCD)
+- Secrets management (External Secrets Operator)
+- Full CI/CD pipeline (GitHub Actions)
+- Complete documentation (beginner to expert, 12+ hours of content)
+- Interview preparation (55+ questions with perfect answers)
+- 10 real war stories with debugging walkthroughs
+- Visual ASCII diagrams for every major concept
+- Cost optimization with spot instances across all environments
 
 
 START HERE:
@@ -96,13 +142,4 @@ START HERE:
 1. Read: README.md (10 minutes)
 2. Learn: docs/01-fundamentals.md (1 hour)
 3. Deploy: GETTING_STARTED.md (follow guide)
-4. Experiment: Break things, fix things, learn!
-
-
-FILES BY PURPOSE:
------------------
-Learning:       docs/*.md (3 files)
-Deployment:     GETTING_STARTED.md
-Reference:      INDEX.md, PROJECT_SUMMARY.md
-Code:           terraform/** (20 files)
-Navigation:     README.md
+4. Break things, fix things, learn!

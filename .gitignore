@@ -92,3 +92,9 @@ yarn.lock
 
 # Keep example files
 !terraform/environments/dev/terraform.tfvars.example
+!terraform/environments/staging/terraform.tfvars.example
+!terraform/environments/prod/terraform.tfvars.example
+
+# Go (Terratest)
+*.test
+*.out
