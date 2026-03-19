@@ -213,11 +213,118 @@ module "prometheus" {
   depends_on = [module.eks]
 }
 
+###################
+# DNS & TLS Add-ons
+###################
+
+# External DNS - Automatically manages Route53 records from K8s Ingress/Service
+module "external_dns" {
+  source = "../../modules/addons/external-dns"
+
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+
+  route53_zone_ids = var.route53_zone_ids
+  domain_filters   = var.domain_filters
+  policy           = "upsert-only"  # Dev: safer - never deletes DNS records
+
+  replica_count = 1  # Dev: single replica
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# Cert-Manager - TLS certificate automation
+module "cert_manager" {
+  source = "../../modules/addons/cert-manager"
+
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+
+  enable_route53   = var.cert_manager_enable_route53
+  route53_zone_ids = var.route53_zone_ids
+
+  webhook_replica_count = 1  # Dev: single replica
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# EFS CSI Driver - Shared persistent volumes (ReadWriteMany)
+module "efs_csi_driver" {
+  source = "../../modules/addons/efs-csi-driver"
+
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# OpenTelemetry Collector - Traces and metrics pipeline
+module "otel_collector" {
+  source = "../../modules/addons/otel-collector"
+
+  namespace     = "observability"
+  mode          = "deployment"
+  replica_count = 1  # Dev: single replica
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+###################
+# Operations Add-ons
+###################
+
 # Reloader - Auto-restart pods on ConfigMap/Secret changes
 module "reloader" {
   source = "../../modules/addons/reloader"
 
   namespace = "reloader"
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# Grafana - Dashboards and visualization (standalone, not built into Prometheus)
+module "grafana" {
+  source = "../../modules/addons/grafana"
+
+  namespace      = "monitoring"
+  replica_count  = 1  # Dev: single replica
+  prometheus_url = "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+
+  admin_user     = "admin"
+  admin_password = var.grafana_admin_password
+
+  tags = local.tags
+
+  depends_on = [module.prometheus]
+}
+
+# ArgoCD - GitOps continuous delivery
+module "argocd" {
+  source = "../../modules/addons/argocd"
+
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+
+  server_replica_count = 1  # Dev: single replica
+  enable_irsa          = var.argocd_enable_irsa
 
   tags = local.tags
 

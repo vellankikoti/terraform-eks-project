@@ -179,3 +179,46 @@ variable "autoscaler_scale_down_utilization_threshold" {
   type        = string
   default     = "0.5"
 }
+
+###################
+# DNS & TLS Variables
+###################
+
+variable "route53_zone_ids" {
+  description = "Route53 hosted zone IDs"
+  type        = list(string)
+  default     = []
+}
+
+variable "domain_filters" {
+  description = "Domain filters for External DNS (e.g., ['dev.example.com'])"
+  type        = list(string)
+  default     = []
+}
+
+variable "cert_manager_enable_route53" {
+  description = "Enable Route53 for Cert-Manager DNS01 challenge"
+  type        = bool
+  default     = false
+}
+
+###################
+# Observability Variables
+###################
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password (use secrets manager in real deployments)"
+  type        = string
+  default     = "admin-dev"
+  sensitive   = true
+}
+
+###################
+# GitOps Variables
+###################
+
+variable "argocd_enable_irsa" {
+  description = "Enable IRSA for ArgoCD"
+  type        = bool
+  default     = false
+}

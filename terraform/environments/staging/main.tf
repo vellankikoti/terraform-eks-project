@@ -240,14 +240,23 @@ module "otel_collector" {
 }
 
 ###################
-# Operations Add-ons
+# DNS & TLS Add-ons
 ###################
 
-# Reloader - Auto-restart on ConfigMap/Secret changes
-module "reloader" {
-  source = "../../modules/addons/reloader"
+# External DNS - Automatically manages Route53 records from K8s Ingress/Service
+module "external_dns" {
+  source = "../../modules/addons/external-dns"
 
-  namespace = "reloader"
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+
+  route53_zone_ids = var.route53_zone_ids
+  domain_filters   = var.domain_filters
+  policy           = "upsert-only"  # Staging: safer - never deletes DNS records
+
+  replica_count = 1  # Staging: single replica sufficient
 
   tags = local.tags
 
@@ -265,6 +274,56 @@ module "cert_manager" {
 
   enable_route53   = var.cert_manager_enable_route53
   route53_zone_ids = var.route53_zone_ids
+
+  webhook_replica_count = 1  # Staging: single replica
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+###################
+# Operations Add-ons
+###################
+
+# Reloader - Auto-restart on ConfigMap/Secret changes
+module "reloader" {
+  source = "../../modules/addons/reloader"
+
+  namespace = "reloader"
+
+  tags = local.tags
+
+  depends_on = [module.eks]
+}
+
+# Grafana - Dashboards and visualization (standalone)
+module "grafana" {
+  source = "../../modules/addons/grafana"
+
+  namespace      = "monitoring"
+  replica_count  = 1  # Staging: single replica
+  prometheus_url = "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
+
+  admin_user     = "admin"
+  admin_password = var.grafana_admin_password
+
+  tags = local.tags
+
+  depends_on = [module.prometheus]
+}
+
+# ArgoCD - GitOps continuous delivery
+module "argocd" {
+  source = "../../modules/addons/argocd"
+
+  cluster_name      = module.eks.cluster_id
+  aws_region        = var.aws_region
+  oidc_provider_arn = module.eks.oidc_provider_arn
+  oidc_provider_url = module.eks.oidc_provider_url
+
+  server_replica_count = 1  # Staging: single replica
+  enable_irsa          = var.argocd_enable_irsa
 
   tags = local.tags
 

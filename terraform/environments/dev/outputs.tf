@@ -79,3 +79,8 @@ output "ebs_csi_driver_role_arn" {
   description = "EBS CSI Driver IAM role ARN"
   value       = module.ebs_csi_driver.iam_role_arn
 }
+
+output "efs_csi_driver_role_arn" {
+  description = "EFS CSI Driver IAM role ARN"
+  value       = module.efs_csi_driver.iam_role_arn
+}

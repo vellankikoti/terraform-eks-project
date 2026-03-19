@@ -211,3 +211,30 @@ variable "cert_manager_enable_route53" {
   type        = bool
   default     = false
 }
+
+variable "domain_filters" {
+  description = "Domain filters for External DNS (e.g., ['staging.example.com'])"
+  type        = list(string)
+  default     = []
+}
+
+###################
+# Observability Variables
+###################
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password (use secrets manager in real deployments)"
+  type        = string
+  default     = "admin-staging"
+  sensitive   = true
+}
+
+###################
+# GitOps Variables
+###################
+
+variable "argocd_enable_irsa" {
+  description = "Enable IRSA for ArgoCD"
+  type        = bool
+  default     = false
+}

@@ -84,3 +84,8 @@ output "efs_csi_driver_role_arn" {
   description = "EFS CSI Driver IAM role ARN"
   value       = module.efs_csi_driver.iam_role_arn
 }
+
+output "external_dns_role_arn" {
+  description = "External DNS IAM role ARN"
+  value       = module.external_dns.iam_role_arn
+}
